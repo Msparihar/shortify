@@ -1,0 +1,16 @@
+[project]
+name = "shortify-backend"
+version = "0.1.0"
+description = "URL Shortener Backend API"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]",
+    "pymongo",
+    "python-dotenv",
+    "pydantic",
+    "nanoid",
+    "motor",
+    "pydantic-settings>=2.8.1",
+    "redis>=5.0.0",
+]
