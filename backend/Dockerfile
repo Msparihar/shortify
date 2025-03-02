@@ -1,68 +1,31 @@
-# Build stage
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.12-alpine
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        curl \
-        build-essential \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app/
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /bin/
 
-# Set working directory
-WORKDIR /app
-
-# Copy dependency files
-COPY pyproject.toml uv.lock ./
-
-# Install dependencies with cache mount
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-dev
-
-# Copy application code
-COPY . .
-
-# Install project with cache mount
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
-
-# Production stage
-FROM python:3.12-slim-bookworm
-
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PORT=8000
-
-# Create non-root user
-RUN addgroup --system app && adduser --system --group app
-
-WORKDIR /app
-
-# Copy virtual environment from builder
-COPY --from=builder --chown=app:app /app/.venv /app/.venv
-COPY --from=builder --chown=app:app /app/app /app/app
-
-# Set PATH to use the virtual environment
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Switch to non-root user
-USER app
+ENV UV_COMPILE_BYTECODE=1
 
-# Expose port
-EXPOSE $PORT
+ENV UV_LINK_MODE=copy
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s \
-    CMD curl -f http://localhost:$PORT/health || exit 1
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project
 
-# Start the application with Gunicorn
-CMD ["gunicorn", "app.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+ENV PYTHONPATH=/app
+
+COPY ./pyproject.toml ./uv.lock /app/
+
+COPY ./app /app/app
+
+COPY ./main.py /app/main.py
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync
+
+CMD ["fastapi", "run", "main.py"]
